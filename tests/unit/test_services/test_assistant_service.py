@@ -5,7 +5,9 @@ All external dependencies (database, LangGraph) are mocked.
 """
 
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -16,28 +18,32 @@ from agent_server.services.assistant_service import AssistantService, to_pydanti
 
 
 @pytest.fixture
-def mock_session():
+def mock_session() -> AsyncMock:
     """Mock AsyncSession for testing"""
-    return AsyncMock()
+    session = AsyncMock()
+    session.add = Mock()  # session.add is synchronous
+    return session
 
 
 @pytest.fixture
-def mock_langgraph_service():
+def mock_langgraph_service() -> Mock:
     """Mock LangGraphService for testing"""
     mock_service = Mock()
     mock_service.list_graphs.return_value = {"test-graph": {}}
-    mock_service.get_graph = AsyncMock(return_value=Mock())
+    mock_service.get_graph_for_validation = AsyncMock(return_value=Mock())
     return mock_service
 
 
 @pytest.fixture
-def assistant_service(mock_session, mock_langgraph_service):
+def assistant_service(
+    mock_session: AsyncMock, mock_langgraph_service: Mock
+) -> AssistantService:
     """AssistantService instance with mocked dependencies"""
     return AssistantService(mock_session, mock_langgraph_service)
 
 
 @pytest.fixture
-def sample_assistant_create():
+def sample_assistant_create() -> AssistantCreate:
     """Sample AssistantCreate request for testing"""
     return AssistantCreate(
         name="Test Assistant",
@@ -50,7 +56,7 @@ def sample_assistant_create():
 
 
 @pytest.fixture
-def sample_assistant_update():
+def sample_assistant_update() -> AssistantUpdate:
     """Sample AssistantUpdate request for testing"""
     return AssistantUpdate(
         name="Updated Assistant",
@@ -63,7 +69,7 @@ def sample_assistant_update():
 class TestToPydantic:
     """Test ORM to Pydantic conversion logic"""
 
-    def test_to_pydantic_basic_conversion(self):
+    def test_to_pydantic_basic_conversion(self) -> None:
         """Test basic ORM to Pydantic conversion"""
         # Create mock ORM object
         mock_orm = Mock()
@@ -124,7 +130,7 @@ class TestToPydantic:
         assert isinstance(result.assistant_id, str)
         assert isinstance(result.user_id, str)
 
-    def test_to_pydantic_uuid_conversion(self):
+    def test_to_pydantic_uuid_conversion(self) -> None:
         """Test UUID to string conversion"""
         mock_orm = Mock()
         mock_table = Mock()
@@ -179,7 +185,7 @@ class TestToPydantic:
         assert result.assistant_id == str(test_uuid)
         assert result.user_id == str(test_uuid)
 
-    def test_to_pydantic_none_values(self):
+    def test_to_pydantic_none_values(self) -> None:
         """Test handling of None values"""
         mock_orm = Mock()
         mock_table = Mock()
@@ -239,14 +245,18 @@ class TestAssistantServiceCreate:
 
     @pytest.mark.asyncio
     async def test_create_assistant_graph_validation_success(
-        self, assistant_service, sample_assistant_create
-    ):
+        self,
+        assistant_service: AssistantService,
+        sample_assistant_create: AssistantCreate,
+    ) -> None:
         """Test successful graph validation"""
         # Setup mocks
         assistant_service.langgraph_service.list_graphs.return_value = {
             "test-graph": {}
         }
-        assistant_service.langgraph_service.get_graph.return_value = Mock()
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            Mock()
+        )
 
         # Mock database operations
         assistant_service.session.scalar.return_value = None  # No existing assistant
@@ -267,7 +277,7 @@ class TestAssistantServiceCreate:
         assistant_service.session.commit = AsyncMock()
 
         # Mock refresh to populate the mock object with attributes
-        def mock_refresh(obj):
+        def mock_refresh(obj: Mock) -> None:
             obj.assistant_id = "test-id"
             obj.name = "Test Assistant"
             obj.description = "Test description"
@@ -288,14 +298,16 @@ class TestAssistantServiceCreate:
 
         assert isinstance(result, Assistant)
         assistant_service.langgraph_service.list_graphs.assert_called_once()
-        assistant_service.langgraph_service.get_graph.assert_called_once_with(
+        assistant_service.langgraph_service.get_graph_for_validation.assert_called_once_with(
             "test-graph"
         )
 
     @pytest.mark.asyncio
     async def test_create_assistant_graph_not_found(
-        self, assistant_service, sample_assistant_create
-    ):
+        self,
+        assistant_service: AssistantService,
+        sample_assistant_create: AssistantCreate,
+    ) -> None:
         """Test graph not found error"""
         assistant_service.langgraph_service.list_graphs.return_value = {
             "other-graph": {}
@@ -311,14 +323,16 @@ class TestAssistantServiceCreate:
 
     @pytest.mark.asyncio
     async def test_create_assistant_graph_load_failure(
-        self, assistant_service, sample_assistant_create
-    ):
+        self,
+        assistant_service: AssistantService,
+        sample_assistant_create: AssistantCreate,
+    ) -> None:
         """Test graph loading failure"""
         assistant_service.langgraph_service.list_graphs.return_value = {
             "test-graph": {}
         }
-        assistant_service.langgraph_service.get_graph.side_effect = Exception(
-            "Graph load failed"
+        assistant_service.langgraph_service.get_graph_for_validation.side_effect = (
+            Exception("Graph load failed")
         )
 
         with pytest.raises(HTTPException) as exc_info:
@@ -330,7 +344,9 @@ class TestAssistantServiceCreate:
         assert "Failed to load graph" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_create_assistant_config_context_conflict(self, assistant_service):
+    async def test_create_assistant_config_context_conflict(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test config and context conflict validation"""
         request = AssistantCreate(
             graph_id="test-graph",
@@ -341,7 +357,9 @@ class TestAssistantServiceCreate:
         assistant_service.langgraph_service.list_graphs.return_value = {
             "test-graph": {}
         }
-        assistant_service.langgraph_service.get_graph.return_value = Mock()
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            Mock()
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await assistant_service.create_assistant(request, "user-123")
@@ -353,8 +371,8 @@ class TestAssistantServiceCreate:
 
     @pytest.mark.asyncio
     async def test_create_assistant_config_context_sync_from_config(
-        self, assistant_service
-    ):
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test config to context synchronization"""
         request = AssistantCreate(
             graph_id="test-graph",
@@ -365,13 +383,15 @@ class TestAssistantServiceCreate:
         assistant_service.langgraph_service.list_graphs.return_value = {
             "test-graph": {}
         }
-        assistant_service.langgraph_service.get_graph.return_value = Mock()
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            Mock()
+        )
         assistant_service.session.scalar.return_value = None
         assistant_service.session.add = Mock()
         assistant_service.session.commit = AsyncMock()
 
         # Mock refresh to populate the mock object with attributes
-        def mock_refresh(obj):
+        def mock_refresh(obj: Mock) -> None:
             obj.assistant_id = "test-id"
             obj.name = "Test Assistant"
             obj.description = "Test description"
@@ -393,8 +413,8 @@ class TestAssistantServiceCreate:
 
     @pytest.mark.asyncio
     async def test_create_assistant_config_context_sync_from_context(
-        self, assistant_service
-    ):
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test context to config synchronization"""
         request = AssistantCreate(
             graph_id="test-graph",
@@ -405,13 +425,15 @@ class TestAssistantServiceCreate:
         assistant_service.langgraph_service.list_graphs.return_value = {
             "test-graph": {}
         }
-        assistant_service.langgraph_service.get_graph.return_value = Mock()
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            Mock()
+        )
         assistant_service.session.scalar.return_value = None
         assistant_service.session.add = Mock()
         assistant_service.session.commit = AsyncMock()
 
         # Mock refresh to populate the mock object with attributes
-        def mock_refresh(obj):
+        def mock_refresh(obj: Mock) -> None:
             obj.assistant_id = "test-id"
             obj.name = "Test Assistant"
             obj.description = "Test description"
@@ -433,8 +455,10 @@ class TestAssistantServiceCreate:
 
     @pytest.mark.asyncio
     async def test_create_assistant_duplicate_handling_do_nothing(
-        self, assistant_service, sample_assistant_create
-    ):
+        self,
+        assistant_service: AssistantService,
+        sample_assistant_create: AssistantCreate,
+    ) -> None:
         """Test duplicate assistant handling with do_nothing policy"""
         request = AssistantCreate(
             graph_id="test-graph",
@@ -464,7 +488,9 @@ class TestAssistantServiceCreate:
         assistant_service.langgraph_service.list_graphs.return_value = {
             "test-graph": {}
         }
-        assistant_service.langgraph_service.get_graph.return_value = Mock()
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            Mock()
+        )
         assistant_service.session.scalar.return_value = existing_assistant
 
         result = await assistant_service.create_assistant(request, "user-123")
@@ -474,8 +500,10 @@ class TestAssistantServiceCreate:
 
     @pytest.mark.asyncio
     async def test_create_assistant_duplicate_handling_error(
-        self, assistant_service, sample_assistant_create
-    ):
+        self,
+        assistant_service: AssistantService,
+        sample_assistant_create: AssistantCreate,
+    ) -> None:
         """Test duplicate assistant handling with error policy"""
         request = AssistantCreate(
             graph_id="test-graph",
@@ -489,7 +517,9 @@ class TestAssistantServiceCreate:
         assistant_service.langgraph_service.list_graphs.return_value = {
             "test-graph": {}
         }
-        assistant_service.langgraph_service.get_graph.return_value = Mock()
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            Mock()
+        )
         assistant_service.session.scalar.return_value = existing_assistant
 
         with pytest.raises(HTTPException) as exc_info:
@@ -503,7 +533,9 @@ class TestAssistantServiceGet:
     """Test assistant retrieval business logic"""
 
     @pytest.mark.asyncio
-    async def test_get_assistant_success(self, assistant_service):
+    async def test_get_assistant_success(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test successful assistant retrieval"""
         # Mock assistant from database
         mock_assistant = Mock()
@@ -538,7 +570,9 @@ class TestAssistantServiceGet:
         assert result.name == "Test Assistant"
 
     @pytest.mark.asyncio
-    async def test_get_assistant_not_found(self, assistant_service):
+    async def test_get_assistant_not_found(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test assistant not found error"""
         assistant_service.session.scalar.return_value = None
 
@@ -549,7 +583,9 @@ class TestAssistantServiceGet:
         assert "not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_get_assistant_system_access(self, assistant_service):
+    async def test_get_assistant_system_access(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test system assistant access"""
         # Mock system assistant
         mock_assistant = Mock()
@@ -588,8 +624,10 @@ class TestAssistantServiceUpdate:
 
     @pytest.mark.asyncio
     async def test_update_assistant_success(
-        self, assistant_service, sample_assistant_update
-    ):
+        self,
+        assistant_service: AssistantService,
+        sample_assistant_update: AssistantUpdate,
+    ) -> None:
         """Test successful assistant update"""
         # Mock existing assistant
         mock_assistant = Mock()
@@ -636,8 +674,10 @@ class TestAssistantServiceUpdate:
 
     @pytest.mark.asyncio
     async def test_update_assistant_not_found(
-        self, assistant_service, sample_assistant_update
-    ):
+        self,
+        assistant_service: AssistantService,
+        sample_assistant_update: AssistantUpdate,
+    ) -> None:
         """Test update of non-existent assistant"""
         assistant_service.session.scalar.return_value = None
 
@@ -650,7 +690,9 @@ class TestAssistantServiceUpdate:
         assert "not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_update_assistant_config_context_conflict(self, assistant_service):
+    async def test_update_assistant_config_context_conflict(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test update with config and context conflict"""
         request = AssistantUpdate(
             config={"configurable": {"key": "value"}},
@@ -670,7 +712,9 @@ class TestAssistantServiceDelete:
     """Test assistant deletion business logic"""
 
     @pytest.mark.asyncio
-    async def test_delete_assistant_success(self, assistant_service):
+    async def test_delete_assistant_success(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test successful assistant deletion"""
         # Mock existing assistant
         mock_assistant = Mock()
@@ -687,7 +731,9 @@ class TestAssistantServiceDelete:
         assistant_service.session.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_delete_assistant_not_found(self, assistant_service):
+    async def test_delete_assistant_not_found(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test deletion of non-existent assistant"""
         assistant_service.session.scalar.return_value = None
 
@@ -702,7 +748,9 @@ class TestAssistantServiceVersionManagement:
     """Test assistant version management logic"""
 
     @pytest.mark.asyncio
-    async def test_set_assistant_latest_success(self, assistant_service):
+    async def test_set_assistant_latest_success(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test setting assistant latest version"""
         # Mock existing assistant
         mock_assistant = Mock()
@@ -741,7 +789,9 @@ class TestAssistantServiceVersionManagement:
         assistant_service.session.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_set_assistant_latest_assistant_not_found(self, assistant_service):
+    async def test_set_assistant_latest_assistant_not_found(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test setting latest version for non-existent assistant"""
         assistant_service.session.scalar.return_value = None
 
@@ -752,7 +802,9 @@ class TestAssistantServiceVersionManagement:
         assert "not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_set_assistant_latest_version_not_found(self, assistant_service):
+    async def test_set_assistant_latest_version_not_found(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test setting non-existent version as latest"""
         # Mock existing assistant
         mock_assistant = Mock()
@@ -773,7 +825,9 @@ class TestAssistantServiceSearch:
     """Test assistant search business logic"""
 
     @pytest.mark.asyncio
-    async def test_search_assistants_with_filters(self, assistant_service):
+    async def test_search_assistants_with_filters(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test assistant search with various filters"""
         # Mock search request
         mock_request = Mock()
@@ -796,7 +850,9 @@ class TestAssistantServiceSearch:
         assistant_service.session.scalars.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_count_assistants_with_filters(self, assistant_service):
+    async def test_count_assistants_with_filters(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test assistant counting with filters"""
         # Mock search request
         mock_request = Mock()
@@ -811,7 +867,9 @@ class TestAssistantServiceSearch:
         assistant_service.session.scalar.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_count_assistants_none_result(self, assistant_service):
+    async def test_count_assistants_none_result(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test assistant counting with None result"""
         mock_request = Mock()
         assistant_service.session.scalar.return_value = None
@@ -825,7 +883,9 @@ class TestAssistantServiceSchemas:
     """Test assistant schema extraction logic"""
 
     @pytest.mark.asyncio
-    async def test_get_assistant_schemas_success(self, assistant_service):
+    async def test_get_assistant_schemas_success(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test successful schema extraction"""
         # Mock assistant
         mock_assistant = Mock()
@@ -848,7 +908,9 @@ class TestAssistantServiceSchemas:
         mock_graph.get_context_jsonschema.return_value = {"type": "object"}
 
         assistant_service.session.scalar.return_value = mock_assistant
-        assistant_service.langgraph_service.get_graph.return_value = mock_graph
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            mock_graph
+        )
 
         result = await assistant_service.get_assistant_schemas("test-id", "user-123")
 
@@ -858,7 +920,9 @@ class TestAssistantServiceSchemas:
         assert result["graph_id"] == "test-graph"
 
     @pytest.mark.asyncio
-    async def test_get_assistant_schemas_assistant_not_found(self, assistant_service):
+    async def test_get_assistant_schemas_assistant_not_found(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test schema extraction for non-existent assistant"""
         assistant_service.session.scalar.return_value = None
 
@@ -869,7 +933,9 @@ class TestAssistantServiceSchemas:
         assert "not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_get_assistant_schemas_graph_failure(self, assistant_service):
+    async def test_get_assistant_schemas_graph_failure(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test schema extraction with graph loading failure"""
         # Mock assistant
         mock_assistant = Mock()
@@ -882,8 +948,8 @@ class TestAssistantServiceSchemas:
         mock_assistant.__table__ = mock_table
 
         assistant_service.session.scalar.return_value = mock_assistant
-        assistant_service.langgraph_service.get_graph.side_effect = Exception(
-            "Graph load failed"
+        assistant_service.langgraph_service.get_graph_for_validation.side_effect = (
+            Exception("Graph load failed")
         )
 
         with pytest.raises(HTTPException) as exc_info:
@@ -897,7 +963,9 @@ class TestAssistantServiceGraph:
     """Test assistant graph operations"""
 
     @pytest.mark.asyncio
-    async def test_get_assistant_graph_success(self, assistant_service):
+    async def test_get_assistant_graph_success(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test successful graph retrieval"""
         # Mock assistant
         mock_assistant = Mock()
@@ -919,7 +987,9 @@ class TestAssistantServiceGraph:
         mock_graph.aget_graph = AsyncMock(return_value=mock_drawable_graph)
 
         assistant_service.session.scalar.return_value = mock_assistant
-        assistant_service.langgraph_service.get_graph.return_value = mock_graph
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            mock_graph
+        )
 
         result = await assistant_service.get_assistant_graph(
             "test-id", False, "user-123"
@@ -930,7 +1000,9 @@ class TestAssistantServiceGraph:
         assert "id" not in result["nodes"][0]["data"]
 
     @pytest.mark.asyncio
-    async def test_get_assistant_graph_invalid_xray(self, assistant_service):
+    async def test_get_assistant_graph_invalid_xray(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test graph retrieval with invalid xray parameter"""
         # Mock assistant
         mock_assistant = Mock()
@@ -947,7 +1019,9 @@ class TestAssistantServiceGraph:
         mock_graph.aget_graph.return_value = Mock()
 
         assistant_service.session.scalar.return_value = mock_assistant
-        assistant_service.langgraph_service.get_graph.return_value = mock_graph
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            mock_graph
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await assistant_service.get_assistant_graph("test-id", -1, "user-123")
@@ -956,7 +1030,9 @@ class TestAssistantServiceGraph:
         assert "Invalid xray value" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_get_assistant_graph_not_implemented(self, assistant_service):
+    async def test_get_assistant_graph_not_implemented(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test graph retrieval with unsupported visualization"""
         # Mock assistant
         mock_assistant = Mock()
@@ -973,7 +1049,9 @@ class TestAssistantServiceGraph:
         mock_graph.aget_graph.side_effect = NotImplementedError("Not supported")
 
         assistant_service.session.scalar.return_value = mock_assistant
-        assistant_service.langgraph_service.get_graph.return_value = mock_graph
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            mock_graph
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await assistant_service.get_assistant_graph("test-id", False, "user-123")
@@ -986,7 +1064,9 @@ class TestAssistantServiceSubgraphs:
     """Test assistant subgraph operations"""
 
     @pytest.mark.asyncio
-    async def test_get_assistant_subgraphs_success(self, assistant_service):
+    async def test_get_assistant_subgraphs_success(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test successful subgraph retrieval"""
         # Mock assistant
         mock_assistant = Mock()
@@ -1009,13 +1089,17 @@ class TestAssistantServiceSubgraphs:
         mock_subgraph.config_schema.return_value = Mock()
         mock_subgraph.get_context_jsonschema.return_value = {"type": "object"}
 
-        async def mock_aget_subgraphs(namespace=None, recurse=False):
+        async def mock_aget_subgraphs(
+            namespace: str | None = None, recurse: bool = False
+        ) -> AsyncGenerator[Any, None]:
             yield "subgraph1", mock_subgraph
 
         mock_graph.aget_subgraphs = mock_aget_subgraphs
 
         assistant_service.session.scalar.return_value = mock_assistant
-        assistant_service.langgraph_service.get_graph.return_value = mock_graph
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            mock_graph
+        )
 
         result = await assistant_service.get_assistant_subgraphs(
             "test-id", "namespace1", True, "user-123"
@@ -1025,7 +1109,9 @@ class TestAssistantServiceSubgraphs:
         assert "input_schema" in result["subgraph1"]
 
     @pytest.mark.asyncio
-    async def test_get_assistant_subgraphs_not_implemented(self, assistant_service):
+    async def test_get_assistant_subgraphs_not_implemented(
+        self, assistant_service: AssistantService
+    ) -> None:
         """Test subgraph retrieval with unsupported feature"""
         # Mock assistant
         mock_assistant = Mock()
@@ -1042,7 +1128,9 @@ class TestAssistantServiceSubgraphs:
         mock_graph.aget_subgraphs.side_effect = NotImplementedError("Not supported")
 
         assistant_service.session.scalar.return_value = mock_assistant
-        assistant_service.langgraph_service.get_graph.return_value = mock_graph
+        assistant_service.langgraph_service.get_graph_for_validation.return_value = (
+            mock_graph
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await assistant_service.get_assistant_subgraphs(

@@ -1,5 +1,6 @@
 """Unit tests for thread state retrieval endpoint."""
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -7,6 +8,21 @@ from fastapi import HTTPException
 
 from agent_server.api.threads import get_thread_state
 from agent_server.models import User
+
+
+def create_get_graph_mock(return_value=None, side_effect=None):
+    """Create a mock for get_graph that works as an async context manager."""
+
+    @asynccontextmanager
+    async def async_cm(*args, **kwargs):
+        if side_effect:
+            raise side_effect
+        yield return_value
+
+    def get_graph(*args, **kwargs):
+        return async_cm(*args, **kwargs)
+
+    return get_graph
 
 
 class TestGetThreadState:
@@ -27,18 +43,19 @@ class TestGetThreadState:
 
     @pytest.mark.asyncio
     async def test_missing_graph_id(self):
-        """404 returned when thread metadata does not include a graph."""
+        """Empty state returned when thread metadata does not include a graph."""
         user = User(identity="user-1", scopes=[])
         session = AsyncMock()
         thread_row = MagicMock()
         thread_row.metadata_json = {}
         session.scalar.return_value = thread_row
 
-        with pytest.raises(HTTPException) as exc_info:
-            await get_thread_state("thread-123", user=user, session=session)
+        result = await get_thread_state("thread-123", user=user, session=session)
 
-        assert exc_info.value.status_code == 404
-        assert "no associated graph" in exc_info.value.detail.lower()
+        # get_thread_state returns ThreadState Pydantic model
+        assert hasattr(result, "values")
+        assert hasattr(result, "checkpoint")
+        assert result.checkpoint.checkpoint_id is None
 
     @pytest.mark.asyncio
     async def test_graph_load_failure(self):
@@ -52,7 +69,7 @@ class TestGetThreadState:
         with patch(
             "agent_server.services.langgraph_service.get_langgraph_service"
         ) as mock_service:
-            mock_service.return_value.get_graph = AsyncMock(
+            mock_service.return_value.get_graph = create_get_graph_mock(
                 side_effect=Exception("boom")
             )
 
@@ -60,7 +77,7 @@ class TestGetThreadState:
                 await get_thread_state("thread-123", user=user, session=session)
 
         assert exc_info.value.status_code == 500
-        assert "failed to load graph" in exc_info.value.detail.lower()
+        assert "failed to retrieve thread state" in exc_info.value.detail.lower()
 
     @pytest.mark.asyncio
     async def test_no_state_snapshot_found(self):
@@ -84,7 +101,9 @@ class TestGetThreadState:
                 return_value={"configurable": {}},
             ),
         ):
-            mock_service.return_value.get_graph = AsyncMock(return_value=mock_agent)
+            mock_service.return_value.get_graph = create_get_graph_mock(
+                return_value=mock_agent
+            )
 
             with pytest.raises(HTTPException) as exc_info:
                 await get_thread_state("thread-123", user=user, session=session)
@@ -118,13 +137,15 @@ class TestGetThreadState:
                 side_effect=Exception("convert failed"),
             ) as mock_convert,
         ):
-            mock_service.return_value.get_graph = AsyncMock(return_value=mock_agent)
+            mock_service.return_value.get_graph = create_get_graph_mock(
+                return_value=mock_agent
+            )
 
             with pytest.raises(HTTPException) as exc_info:
                 await get_thread_state("thread-123", user=user, session=session)
 
         assert exc_info.value.status_code == 500
-        assert "failed to convert" in exc_info.value.detail.lower()
+        assert "failed to retrieve thread state" in exc_info.value.detail.lower()
         mock_convert.assert_called_once()
 
     @pytest.mark.asyncio
@@ -158,7 +179,9 @@ class TestGetThreadState:
                 return_value=mock_thread_state,
             ) as mock_convert,
         ):
-            mock_service.return_value.get_graph = AsyncMock(return_value=mock_agent)
+            mock_service.return_value.get_graph = create_get_graph_mock(
+                return_value=mock_agent
+            )
 
             result = await get_thread_state(
                 "thread-123",
@@ -199,7 +222,9 @@ class TestGetThreadState:
                 return_value={"configurable": {}},
             ),
         ):
-            mock_service.return_value.get_graph = AsyncMock(return_value=mock_agent)
+            mock_service.return_value.get_graph = create_get_graph_mock(
+                return_value=mock_agent
+            )
 
             with pytest.raises(HTTPException) as exc_info:
                 await get_thread_state("thread-123", user=user, session=session)

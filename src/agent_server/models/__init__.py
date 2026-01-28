@@ -29,6 +29,9 @@ from .threads import (
     ThreadSearchRequest,
     ThreadSearchResponse,
     ThreadState,
+    ThreadStateUpdate,
+    ThreadStateUpdateResponse,
+    ThreadUpdate,
 )
 
 __all__ = [
@@ -46,6 +49,8 @@ __all__ = [
     "ThreadSearchRequest",
     "ThreadSearchResponse",
     "ThreadState",
+    "ThreadStateUpdate",
+    "ThreadStateUpdateResponse",
     "ThreadCheckpoint",
     "ThreadCheckpointPostRequest",
     "ThreadHistoryRequest",
@@ -67,4 +72,5 @@ __all__ = [
     "User",
     "AuthContext",
     "TokenPayload",
+    "ThreadUpdate",
 ]

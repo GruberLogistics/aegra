@@ -5,6 +5,7 @@ from typing import Any, Self
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
@@ -61,6 +62,12 @@ class RunCreate(BaseModel):
         description="Whether to include subgraph events in streaming. When True, includes events from all subgraphs. When False (default when None), excludes subgraph events. Defaults to False for backwards compatibility.",
     )
 
+    # Request metadata (top-level in payload)
+    metadata: dict[str, Any] | None = Field(
+        None,
+        description="Request metadata (e.g., from_studio flag)",
+    )
+
     @model_validator(mode="after")
     def validate_input_command_exclusivity(self) -> Self:
         """Ensure input and command are mutually exclusive"""
@@ -74,7 +81,11 @@ class RunCreate(BaseModel):
                     "Cannot specify both 'input' and 'command' - they are mutually exclusive"
                 )
         if self.input is None and self.command is None:
-            raise ValueError("Must specify either 'input' or 'command'")
+            if self.checkpoint is not None:
+                # Allow checkpoint-only requests by treating input as empty dict
+                self.input = {}
+            else:
+                raise ValueError("Must specify either 'input' or 'command'")
         return self
 
 
@@ -83,6 +94,8 @@ class Run(BaseModel):
 
     Status values: pending, running, error, success, timeout, interrupted
     """
+
+    model_config = ConfigDict(from_attributes=True)
 
     run_id: str
     thread_id: str
@@ -104,9 +117,6 @@ class Run(BaseModel):
         if not isinstance(v, str):
             raise ValueError(f"Status must be a string, got {type(v)}")
         return validate_run_status(v)
-
-    class Config:
-        from_attributes = True
 
 
 class RunStatus(BaseModel):
