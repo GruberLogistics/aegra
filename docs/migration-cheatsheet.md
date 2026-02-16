@@ -1,68 +1,55 @@
 # Migration Commands Quick Reference
 
-> **📚 For complete documentation, see [Developer Guide](developer-guide.md)**
+> **For complete documentation, see [Developer Guide](developer-guide.md)**
 
-**⚠️ Important**: Always activate your virtual environment first:
+> **Note:** As of v0.3.0, migrations run automatically on server startup. You only need Alembic commands for creating new migrations or troubleshooting.
 
-```bash
-source .venv/bin/activate  # Mac/Linux
-# OR .venv/Scripts/activate  # Windows
-```
-
-## 🚀 Essential Commands
+## Essential Commands
 
 ```bash
-# Apply all pending migrations
-python3 scripts/migrate.py upgrade
+# Create new migration (from repo root)
+uv run --package aegra-api alembic revision --autogenerate -m "Description"
 
-# Create new migration
-python3 scripts/migrate.py revision --autogenerate -m "Description"
+# Apply all pending migrations manually (if needed)
+uv run --package aegra-api alembic upgrade head
 
 # Rollback last migration
-python3 scripts/migrate.py downgrade
+uv run --package aegra-api alembic downgrade -1
 
 # Show migration history
-python3 scripts/migrate.py history
+uv run --package aegra-api alembic history
 
 # Show current version
-python3 scripts/migrate.py current
-
-# Reset database (⚠️ DESTRUCTIVE)
-python3 scripts/migrate.py reset
+uv run --package aegra-api alembic current
 ```
 
-## 🛠️ Daily Workflow
+## Daily Workflow
 
-**Docker (Recommended):**
+**CLI (Recommended):**
 
 ```bash
-# Start everything
-docker compose up aegra
+# Start everything (postgres + auto-migrations + hot reload)
+aegra dev
 ```
 
-**Local Development:**
+**Manual:**
 
 ```bash
 # Start development
 docker compose up postgres -d
-python3 scripts/migrate.py upgrade
-python3 run_server.py
-
-# Make database changes
-python3 scripts/migrate.py revision --autogenerate -m "Add new feature"
-python3 scripts/migrate.py upgrade
+uv run --package aegra-api alembic upgrade head
+uv run --package aegra-api uvicorn aegra_api.main:app --reload
 ```
 
-## 🔍 Quick Troubleshooting
+## Quick Troubleshooting
 
 | Problem                   | Solution                              |
 | ------------------------- | ------------------------------------- |
 | Can't connect to database | `docker compose up postgres -d`       |
-| Migration fails           | `python3 scripts/migrate.py current`  |
-| Permission denied         | `chmod +x scripts/migrate.py`         |
-| Database broken           | `python3 scripts/migrate.py reset` ⚠️ |
+| Migration fails           | `uv run --package aegra-api alembic current` |
+| Database broken           | `uv run --package aegra-api alembic downgrade base` then `alembic upgrade head` |
 
-## 📚 Need More Help?
+## Need More Help?
 
-- **📖 [Complete Developer Guide](developer-guide.md)** - Full setup, explanations, and troubleshooting
-- **🔗 [Alembic Documentation](https://alembic.sqlalchemy.org/)** - Official Alembic docs
+- **[Complete Developer Guide](developer-guide.md)** - Full setup, explanations, and troubleshooting
+- **[Alembic Documentation](https://alembic.sqlalchemy.org/)** - Official Alembic docs

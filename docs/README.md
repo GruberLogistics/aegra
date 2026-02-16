@@ -9,16 +9,19 @@ Welcome to the Aegra documentation! Here you'll find everything you need to get 
 - **[Developer Guide](developer-guide.md)** - Complete setup, migrations, and development workflow
 - **[Code Quality Guide](code-quality.md)** - Quick reference for linting, formatting, and commit standards
 - **[Migration Cheatsheet](migration-cheatsheet.md)** - Quick reference for common commands
-- **[Production Docker Setup](production-docker-setup.md)** - Production deployment considerations and Docker Compose configuration
+- **[Deployment Guide](deployment.md)** - CLI commands reference, deployment scenarios (Docker, PaaS, Kubernetes)
 
 ### For Users
 
 - **[Main README](../README.md)** - Project overview and quick start
 - **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute to Aegra
+- **[Configuration](configuration.md)** - Complete configuration reference for aegra.json
+- **[Authentication & Authorization](authentication.md)** - Configure authentication and authorization handlers
+- **[Custom Routes](custom-routes.md)** - Add custom FastAPI endpoints
 
 ## Observability
 
-- [Langfuse Integration](./langfuse-usage.md) - How to set up and use Langfuse for tracing.
+- [Observability & Tracing](./observability.md) - How to set up and use observability and tracing.
 
 ## 🚀 Quick Start
 
